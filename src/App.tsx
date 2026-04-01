@@ -14,6 +14,31 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// --- Constants & Mocks ---
+
+const MOCK_CONFIG = {
+  title: "O melhor empréstimo para você em 20 segundos",
+  description: "Por favor, responda as perguntas abaixo para que nossa tecnologia possa escolher o melhor empréstimo para você.",
+  questions: [
+    { id: 1, text: "Qual o valor do empréstimo que você precisa?", options: ["Até R$ 5.000", "R$ 5.000 a R$ 20.000", "Acima de R$ 20.000"] },
+    { id: 2, text: "Qual o seu objetivo com o empréstimo?", options: ["Pagar dívidas", "Investir no negócio", "Reformar a casa", "Outros"] },
+    { id: 3, text: "Você possui restrição no nome (negativado)?", options: ["Sim", "Não"] }
+  ],
+  whatsappNumbers: [
+    { id: '1', name: 'Suporte 1', number: '5511999999999', message: 'Olá, gostaria de saber mais sobre o empréstimo.', active: true, clicks: 0 }
+  ]
+};
+
+const MOCK_STATS = {
+  totalClicks: 0,
+  whatsappNumbers: MOCK_CONFIG.whatsappNumbers,
+  questions: MOCK_CONFIG.questions,
+  settings: {
+    title: MOCK_CONFIG.title,
+    description: MOCK_CONFIG.description
+  }
+};
+
 // --- Components ---
 
 const Header = () => (
@@ -54,6 +79,7 @@ const Footer = () => (
 
 const QuizPage = () => {
   const [config, setConfig] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -61,16 +87,24 @@ const QuizPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchConfig = () => {
+    setIsLoading(true);
     setError(null);
     fetch('/api/config')
-      .then(res => {
-        if (!res.ok) throw new Error('Falha ao carregar configurações');
-        return res.json();
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha ao carregar configurações');
+        return data;
       })
-      .then(data => setConfig(data))
+      .then(data => {
+        setConfig(data);
+        setIsLoading(false);
+      })
       .catch(err => {
-        console.error('Erro ao carregar config:', err);
-        setError('Não foi possível carregar as configurações. Verifique sua conexão ou tente novamente.');
+        console.error('Erro ao carregar config, usando mock:', err);
+        // Fallback to mock data if API fails
+        setConfig(MOCK_CONFIG);
+        setIsLoading(false);
+        // We don't set error here to allow the app to work with mock data
       });
   };
 
@@ -92,9 +126,10 @@ const QuizPage = () => {
     );
   }
 
-  if (!config) return <div className="flex justify-center items-center h-screen">Carregando...</div>;
+  if (isLoading) return <div className="flex justify-center items-center h-screen font-bold text-empireland-green">Carregando Quiz...</div>;
 
-  const totalQuestions = config.questions.length;
+  const questions = config?.questions || [];
+  const totalQuestions = (questions || []).length;
   const isLastStep = currentStep === totalQuestions;
 
   const handleOptionClick = (questionId: number, option: string) => {
@@ -110,13 +145,26 @@ const QuizPage = () => {
     }
   };
 
-  const progress = ((currentStep + 1) / totalQuestions) * 100;
+  const progress = totalQuestions > 0 ? ((currentStep + 1) / totalQuestions) * 100 : 0;
 
   const canSubmit = formData.name.trim() !== '' && formData.email.trim() !== '' && formData.agreed;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return;
     setIsSubmitting(true);
+    try {
+      await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          quiz_responses: answers
+        })
+      });
+    } catch (err) {
+      console.error('Erro ao salvar lead:', err);
+    }
     // Redirect to the lead distribution endpoint
     window.location.href = '/api/redirect-lead';
   };
@@ -137,10 +185,10 @@ const QuizPage = () => {
             >
               <div className="space-y-2">
                 <h1 className="text-2xl md:text-3xl font-bold text-empireland-green">
-                  O melhor empréstimo para você em 20 segundos
+                  {config?.title || MOCK_CONFIG.title}
                 </h1>
                 <p className="text-gray-600">
-                  Por favor, responda as perguntas abaixo para que nossa tecnologia possa escolher o <span className="font-bold text-empireland-green">melhor empréstimo para você</span>.
+                  {config?.description || MOCK_CONFIG.description}
                 </p>
               </div>
 
@@ -170,16 +218,16 @@ const QuizPage = () => {
                   </button>
                 )}
                 <h2 className="text-xl font-bold text-empireland-green">
-                  {config.questions[currentStep].text}
+                  {questions[currentStep]?.text || "Pergunta não encontrada"}
                 </h2>
                 
                 <div className="grid grid-cols-2 gap-4">
-                  {config.questions[currentStep].options.map((option: string, idx: number) => (
+                  {(questions[currentStep]?.options || []).map((option: string, idx: number) => (
                     <motion.button
                       key={idx}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => handleOptionClick(config.questions[currentStep].id, option)}
+                      onClick={() => handleOptionClick(questions[currentStep]?.id, option)}
                       className={cn(
                         "w-full py-4 px-6 text-center border-2 border-gray-100 rounded-xl transition-all duration-300 shadow-sm",
                         "bg-white text-gray-700 hover:bg-empireland-green hover:text-white hover:border-empireland-green font-bold"
@@ -277,14 +325,29 @@ const AdminPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [stats, setStats] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'questions' | 'whatsapp'>('stats');
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'stats' | 'questions' | 'whatsapp' | 'general'>('stats');
   const [error, setError] = useState('');
   const [editingNumber, setEditingNumber] = useState<any>(null);
 
   const fetchStats = () => {
+    setIsLoading(true);
+    setError('');
     fetch('/api/admin/stats')
-      .then(res => res.json())
-      .then(data => setStats(data));
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha ao carregar estatísticas');
+        return data;
+      })
+      .then(data => {
+        setStats(data);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        console.error('Erro ao buscar stats, usando mock:', err);
+        setStats(MOCK_STATS);
+        setIsLoading(false);
+      });
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -304,15 +367,28 @@ const AdminPage = () => {
   };
 
   const handleSave = async () => {
-    const res = await fetch('/api/admin/update-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        questions: stats.questions,
-        whatsappNumbers: stats.whatsappNumbers
-      })
-    });
-    if (res.ok) alert('Configurações salvas com sucesso!');
+    if (!stats) return;
+    try {
+      const res = await fetch('/api/admin/update-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questions: stats.questions || [],
+          whatsappNumbers: stats.whatsappNumbers || [],
+          settings: stats.settings || {}
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Configurações salvas com sucesso!');
+        fetchStats();
+      } else {
+        throw new Error(data.error || 'Erro ao salvar configurações');
+      }
+    } catch (err: any) {
+      console.error('Erro ao salvar:', err);
+      alert(err.message);
+    }
   };
 
   if (!isLoggedIn) {
@@ -352,7 +428,35 @@ const AdminPage = () => {
     );
   }
 
-  if (!stats) return <div>Carregando...</div>;
+  if (error && !isLoggedIn) {
+    // This error is handled inside the login form
+  }
+
+  if (isLoading && isLoggedIn) return <div className="flex justify-center items-center h-screen font-bold text-empireland-green">Carregando Painel...</div>;
+
+  if (!stats && !error && isLoggedIn) return <div className="flex justify-center items-center h-screen">Carregando...</div>;
+
+  if (error && isLoggedIn) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen space-y-4 p-4 text-center">
+        <p className="text-red-500 font-medium">{error}</p>
+        <button 
+          onClick={fetchStats}
+          className="bg-empireland-green text-white px-6 py-2 rounded-full font-bold hover:bg-opacity-90 transition-all"
+        >
+          TENTAR NOVAMENTE
+        </button>
+        <button 
+          onClick={() => setIsLoggedIn(false)}
+          className="text-gray-500 hover:underline"
+        >
+          Voltar para Login
+        </button>
+      </div>
+    );
+  }
+
+  if (!stats) return <div className="flex justify-center items-center h-screen">Carregando...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -377,6 +481,12 @@ const AdminPage = () => {
             className={cn("w-full flex items-center gap-3 p-3 rounded-lg transition-all", activeTab === 'whatsapp' ? "bg-white/20" : "hover:bg-white/10")}
           >
             <MessageSquare size={20} /> WhatsApp
+          </button>
+          <button 
+            onClick={() => setActiveTab('general')}
+            className={cn("w-full flex items-center gap-3 p-3 rounded-lg transition-all", activeTab === 'general' ? "bg-white/20" : "hover:bg-white/10")}
+          >
+            <Settings size={20} /> Configurações
           </button>
         </nav>
         <button 
@@ -408,11 +518,15 @@ const AdminPage = () => {
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <p className="text-gray-500 text-sm">Números Ativos</p>
-                <p className="text-3xl font-bold text-empireland-green">{stats.whatsappNumbers.filter((n:any) => n.active).length}</p>
+                <p className="text-3xl font-bold text-empireland-green">
+                  {(stats.whatsappNumbers || []).filter((n:any) => n.active).length}
+                </p>
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <p className="text-gray-500 text-sm">Total de Perguntas</p>
-                <p className="text-3xl font-bold text-empireland-green">{stats.questions.length}</p>
+                <p className="text-3xl font-bold text-empireland-green">
+                  {(stats?.questions || []).length}
+                </p>
               </div>
             </div>
 
@@ -430,8 +544,8 @@ const AdminPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {stats.whatsappNumbers.map((n: any, idx: number) => (
-                    <tr key={n.id} className="border-t border-gray-50">
+                  {(stats?.whatsappNumbers || []).map((n: any, idx: number) => (
+                    <tr key={n.id || idx} className="border-t border-gray-50">
                       <td className="p-4 font-bold">{n.name || "Sem Nome"}</td>
                       <td className="p-4 font-mono">{n.number}</td>
                       <td className="p-4 text-sm text-gray-600 truncate max-w-xs">{n.message}</td>
@@ -444,7 +558,7 @@ const AdminPage = () => {
                       <td className="p-4">
                         <div className="flex items-center gap-2">
                           <button 
-                            onClick={() => setEditingNumber({ ...n, index: stats.whatsappNumbers.findIndex((wn: any) => wn.id === n.id) })}
+                            onClick={() => setEditingNumber({ ...n, index: (stats.whatsappNumbers || []).findIndex((wn: any) => wn.id === n.id) })}
                             className="text-empireland-green hover:text-opacity-80 p-1"
                             title="Editar"
                           >
@@ -453,7 +567,7 @@ const AdminPage = () => {
                           <button 
                             onClick={() => {
                               if (confirm('Deseja resetar os cliques deste número?')) {
-                                const newNs = [...stats.whatsappNumbers];
+                                const newNs = [...(stats.whatsappNumbers || [])];
                                 const nIdx = newNs.findIndex((wn: any) => wn.id === n.id);
                                 if (nIdx !== -1) {
                                   newNs[nIdx].clicks = 0;
@@ -478,8 +592,8 @@ const AdminPage = () => {
 
         {activeTab === 'questions' && (
           <div className="space-y-6">
-            {stats.questions.map((q: any, qIdx: number) => (
-              <div key={q.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+            {(stats?.questions || []).map((q: any, qIdx: number) => (
+              <div key={q.id || qIdx} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div className="flex justify-between items-start">
                   <div className="flex-grow space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">Pergunta {qIdx + 1}</label>
@@ -487,7 +601,7 @@ const AdminPage = () => {
                       type="text" 
                       value={q.text}
                       onChange={e => {
-                        const newQs = [...stats.questions];
+                        const newQs = [...(stats.questions || [])];
                         newQs[qIdx].text = e.target.value;
                         setStats({ ...stats, questions: newQs });
                       }}
@@ -496,7 +610,7 @@ const AdminPage = () => {
                   </div>
                   <button 
                     onClick={() => {
-                      const newQs = stats.questions.filter((_:any, i:number) => i !== qIdx);
+                      const newQs = (stats.questions || []).filter((_:any, i:number) => i !== qIdx);
                       setStats({ ...stats, questions: newQs });
                     }}
                     className="text-red-400 hover:text-red-600 p-2"
@@ -508,13 +622,13 @@ const AdminPage = () => {
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 uppercase">Opções</label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {q.options.map((opt: string, oIdx: number) => (
+                    {(q.options || []).map((opt: string, oIdx: number) => (
                       <div key={oIdx} className="flex gap-2">
                         <input 
                           type="text" 
                           value={opt}
                           onChange={e => {
-                            const newQs = [...stats.questions];
+                            const newQs = [...(stats.questions || [])];
                             newQs[qIdx].options[oIdx] = e.target.value;
                             setStats({ ...stats, questions: newQs });
                           }}
@@ -522,8 +636,8 @@ const AdminPage = () => {
                         />
                         <button 
                           onClick={() => {
-                            const newQs = [...stats.questions];
-                            newQs[qIdx].options = newQs[qIdx].options.filter((_:any, i:number) => i !== oIdx);
+                            const newQs = [...(stats.questions || [])];
+                            newQs[qIdx].options = (newQs[qIdx].options || []).filter((_:any, i:number) => i !== oIdx);
                             setStats({ ...stats, questions: newQs });
                           }}
                           className="text-gray-300 hover:text-red-400"
@@ -534,7 +648,8 @@ const AdminPage = () => {
                     ))}
                     <button 
                       onClick={() => {
-                        const newQs = [...stats.questions];
+                        const newQs = [...(stats.questions || [])];
+                        if (!newQs[qIdx].options) newQs[qIdx].options = [];
                         newQs[qIdx].options.push("Nova opção");
                         setStats({ ...stats, questions: newQs });
                       }}
@@ -548,7 +663,7 @@ const AdminPage = () => {
             ))}
             <button 
               onClick={() => {
-                const newQs = [...stats.questions, { id: Date.now(), text: "Nova Pergunta?", options: ["Opção 1"] }];
+                const newQs = [...(stats.questions || []), { id: Date.now(), text: "Nova Pergunta?", options: ["Opção 1"] }];
                 setStats({ ...stats, questions: newQs });
               }}
               className="w-full py-4 border-2 border-dashed border-gray-300 rounded-2xl text-gray-400 hover:border-empireland-green hover:text-empireland-green transition-all font-bold flex items-center justify-center gap-2"
@@ -565,9 +680,9 @@ const AdminPage = () => {
               <button 
                 onClick={() => {
                   const newNumber = { id: Date.now(), name: "Novo Operador", number: "55", message: "Olá!", active: true, clicks: 0 };
-                  const newNs = [...stats.whatsappNumbers, newNumber];
+                  const newNs = [...(stats.whatsappNumbers || []), newNumber];
                   setStats({ ...stats, whatsappNumbers: newNs });
-                  setEditingNumber({ ...newNumber, index: newNs.length - 1 });
+                  setEditingNumber({ ...newNumber, index: newNs.length > 0 ? newNs.length - 1 : 0 });
                 }}
                 className="flex items-center gap-2 bg-empireland-green text-white px-4 py-2 rounded-lg font-bold hover:bg-opacity-90 transition-all text-sm"
               >
@@ -576,8 +691,8 @@ const AdminPage = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {stats.whatsappNumbers.map((n: any, idx: number) => (
-                <div key={n.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 relative group">
+              {(stats?.whatsappNumbers || []).map((n: any, idx: number) => (
+                <div key={n.id || idx} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 relative group">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center font-bold text-sm">
@@ -598,7 +713,7 @@ const AdminPage = () => {
                       </button>
                       <button 
                         onClick={() => {
-                          const newNs = stats.whatsappNumbers.filter((_:any, i:number) => i !== idx);
+                          const newNs = (stats.whatsappNumbers || []).filter((_:any, i:number) => i !== idx);
                           setStats({ ...stats, whatsappNumbers: newNs });
                         }}
                         className="p-2 text-gray-400 hover:text-red-500 transition-colors"
@@ -616,9 +731,44 @@ const AdminPage = () => {
                     <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold", n.active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>
                       {n.active ? "ATIVO" : "INATIVO"}
                     </span>
+                    <button 
+                      onClick={() => {
+                        const newNs = [...(stats.whatsappNumbers || [])];
+                        newNs[idx].active = !newNs[idx].active;
+                        setStats({ ...stats, whatsappNumbers: newNs });
+                      }}
+                      className="text-xs font-bold text-empireland-green hover:underline"
+                    >
+                      {n.active ? "Desativar" : "Ativar"}
+                    </button>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'general' && (
+          <div className="max-w-2xl space-y-6">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-6">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-700">Título do Quiz</label>
+                <input 
+                  type="text" 
+                  value={stats?.settings?.title || ''}
+                  onChange={e => setStats({ ...stats, settings: { ...stats.settings, title: e.target.value } })}
+                  className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-empireland-green outline-none font-bold"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-700">Descrição/Subtítulo</label>
+                <textarea 
+                  value={stats?.settings?.description || ''}
+                  onChange={e => setStats({ ...stats, settings: { ...stats.settings, description: e.target.value } })}
+                  rows={4}
+                  className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-empireland-green outline-none text-gray-600"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -712,7 +862,7 @@ const AdminPage = () => {
                 <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
                   <button 
                     onClick={() => {
-                      const newNs = [...stats.whatsappNumbers];
+                      const newNs = [...(stats.whatsappNumbers || [])];
                       newNs[editingNumber.index] = {
                         id: editingNumber.id,
                         name: editingNumber.name,

@@ -1,59 +1,60 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import fs from "fs";
+import * as admin from "firebase-admin";
+
+let db: admin.firestore.Firestore | null = null;
+
+function getDb() {
+  if (!db) {
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+    if (!projectId || !clientEmail || !privateKey) {
+      throw new Error("Missing Firebase environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY). Please set them in the environment.");
+    }
+
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId,
+          clientEmail,
+          privateKey,
+        }),
+      });
+    }
+    db = admin.firestore();
+  }
+  return db;
+}
 
 const app = express();
 app.use(express.json());
 
-const DB_FILE = path.join(process.cwd(), "db.json");
-
-// Initial data
-const initialData = {
-  questions: [
-    {
-      id: 1,
-      text: "De quanto você precisa?",
-      options: [
-        "Até R$2.000,00",
-        "Entre R$2.000,00 e R$5.000,00",
-        "Entre R$5.000,00 e R$15.000,00",
-        "Mais de R$15.000,00"
-      ]
-    },
-    {
-      id: 2,
-      text: "Você está negativado?",
-      options: ["Sim", "Não"]
-    }
-  ],
-  whatsappNumbers: [
-    { id: 1, name: "Operador 1", number: "5531996996452", message: "Olá, vim pelo quiz e gostaria de ver meu empréstimo!", active: true, clicks: 0 }
-  ],
-  currentIndex: 0,
-  totalClicks: 0
-};
-
-// Load or initialize DB
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
-}
-
-function getDB() {
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-}
-
-function saveDB(data: any) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-}
-
 // API Routes
-app.get("/api/config", (req, res) => {
-  const db = getDB();
-  res.json({
-    questions: db.questions,
-    whatsappNumbers: db.whatsappNumbers.filter((n: any) => n.active)
-  });
+app.get("/api/config", async (req, res) => {
+  try {
+    const firestore = getDb();
+    
+    // Fetch general settings
+    const settingsSnap = await firestore.collection("config").doc("settings").get();
+    const settings = settingsSnap.exists ? settingsSnap.data() : {
+      title: "O melhor empréstimo para você em 20 segundos",
+      description: "Por favor, responda as perguntas abaixo para que nossa tecnologia possa escolher o melhor empréstimo para você."
+    };
+
+    const questionsSnap = await firestore.collection("config").doc("questions").get();
+    const questions = questionsSnap.exists ? questionsSnap.data()?.items || [] : [];
+    
+    const numbersSnap = await firestore.collection("whatsapp_numbers").where("active", "==", true).get();
+    const whatsappNumbers = numbersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    res.json({ ...settings, questions, whatsappNumbers });
+  } catch (error) {
+    console.error("Error fetching config:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
 app.post("/api/admin/login", (req, res) => {
@@ -65,51 +66,149 @@ app.post("/api/admin/login", (req, res) => {
   }
 });
 
-app.get("/api/admin/stats", (req, res) => {
-  const db = getDB();
-  res.json({
-    totalClicks: db.totalClicks,
-    whatsappNumbers: db.whatsappNumbers,
-    questions: db.questions
-  });
+app.get("/api/admin/stats", async (req, res) => {
+  try {
+    const firestore = getDb();
+    const rotationSnap = await firestore.collection("config").doc("rotation").get();
+    const totalClicks = rotationSnap.exists ? rotationSnap.data()?.totalClicks || 0 : 0;
+    
+    const questionsSnap = await firestore.collection("config").doc("questions").get();
+    const questions = questionsSnap.exists ? questionsSnap.data()?.items || [] : [];
+    
+    const settingsSnap = await firestore.collection("config").doc("settings").get();
+    const settings = settingsSnap.exists ? settingsSnap.data() : {
+      title: "O melhor empréstimo para você em 20 segundos",
+      description: "Por favor, responda as perguntas abaixo para que nossa tecnologia possa escolher o melhor empréstimo para você."
+    };
+
+    const numbersSnap = await firestore.collection("whatsapp_numbers").get();
+    const whatsappNumbers = numbersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    res.json({ totalClicks, whatsappNumbers, questions, settings });
+  } catch (error) {
+    console.error("Error fetching admin stats:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
-app.post("/api/admin/update-config", (req, res) => {
-  const { questions, whatsappNumbers } = req.body;
-  const db = getDB();
-  db.questions = questions;
-  db.whatsappNumbers = whatsappNumbers;
-  saveDB(db);
-  res.json({ success: true });
+app.post("/api/admin/update-config", async (req, res) => {
+  try {
+    const firestore = getDb();
+    const { questions, whatsappNumbers, settings } = req.body;
+    
+    // Update questions
+    await firestore.collection("config").doc("questions").set({ items: questions });
+
+    // Update general settings
+    if (settings) {
+      await firestore.collection("config").doc("settings").set(settings);
+    }
+    
+    // Update whatsapp numbers (batch update)
+    const batch = firestore.batch();
+    
+    // Get current IDs to know what to delete
+    const currentSnap = await firestore.collection("whatsapp_numbers").get();
+    const currentIds = currentSnap.docs.map(d => d.id);
+    
+    whatsappNumbers.forEach((n: any) => {
+      const { id, ...data } = n;
+      const docRef = id && typeof id === 'string' && id.length > 5 
+        ? firestore.collection("whatsapp_numbers").doc(id) 
+        : firestore.collection("whatsapp_numbers").doc();
+      batch.set(docRef, data);
+      // Remove from currentIds to keep track of what's still there
+      const idx = currentIds.indexOf(id);
+      if (idx > -1) currentIds.splice(idx, 1);
+    });
+    
+    // Delete removed numbers
+    currentIds.forEach(id => {
+      batch.delete(firestore.collection("whatsapp_numbers").doc(id));
+    });
+
+    await batch.commit();
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error updating config:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
-app.get("/api/redirect-lead", (req, res) => {
-  const db = getDB();
-  const activeNumbers = db.whatsappNumbers.filter((n: any) => n.active);
-  
-  if (activeNumbers.length === 0) {
-    return res.status(404).send("Nenhum número de WhatsApp ativo configurado.");
-  }
+app.get("/api/redirect-lead", async (req, res) => {
+  try {
+    const firestore = getDb();
+    // Get active numbers
+    const numbersSnap = await firestore.collection("whatsapp_numbers").where("active", "==", true).get();
+    const activeNumbers = numbersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+    
+    if (activeNumbers.length === 0) {
+      return res.status(404).send("Nenhum número de WhatsApp ativo configurado.");
+    }
 
-  // Round Robin Logic
-  const index = db.currentIndex % activeNumbers.length;
-  const selected = activeNumbers[index];
-  
-  // Update stats
-  db.totalClicks++;
-  const realIndex = db.whatsappNumbers.findIndex((n: any) => n.id === selected.id);
-  if (realIndex !== -1) {
-    db.whatsappNumbers[realIndex].clicks++;
-  }
-  
-  // Increment global index
-  db.currentIndex = (db.currentIndex + 1) % activeNumbers.length;
-  saveDB(db);
+    // Atomic increment of currentIndex
+    const rotationRef = firestore.collection("config").doc("rotation");
+    
+    const result = await firestore.runTransaction(async (transaction) => {
+      const rotationDoc = await transaction.get(rotationRef);
+      let currentIndex = 0;
+      let totalClicks = 0;
+      
+      if (rotationDoc.exists) {
+        currentIndex = rotationDoc.data()?.currentIndex || 0;
+        totalClicks = rotationDoc.data()?.totalClicks || 0;
+      }
+      
+      const newIndex = currentIndex + 1;
+      const newTotalClicks = totalClicks + 1;
+      
+      transaction.set(rotationRef, { 
+        currentIndex: newIndex, 
+        totalClicks: newTotalClicks,
+        lastUpdate: admin.firestore.FieldValue.serverTimestamp() 
+      }, { merge: true });
+      
+      // Calculate target
+      const targetIdx = currentIndex % activeNumbers.length;
+      const selected = activeNumbers[targetIdx];
+      
+      // Increment clicks on the selected number
+      const numberRef = firestore.collection("whatsapp_numbers").doc(selected.id);
+      transaction.update(numberRef, { 
+        clicks: admin.firestore.FieldValue.increment(1) 
+      });
+      
+      return selected;
+    });
 
-  const encodedMsg = encodeURIComponent(selected.message);
-  const waUrl = `https://wa.me/${selected.number}?text=${encodedMsg}`;
-  
-  res.redirect(waUrl);
+    const encodedMsg = encodeURIComponent(result.message);
+    const waUrl = `https://wa.me/${result.number}?text=${encodedMsg}`;
+    
+    res.redirect(waUrl);
+  } catch (error) {
+    console.error("Error in redirect-lead:", error);
+    res.status(500).send(error instanceof Error ? error.message : "Erro ao processar redirecionamento.");
+  }
+});
+
+// New endpoint to save lead data before redirect
+app.post("/api/leads", async (req, res) => {
+  try {
+    const firestore = getDb();
+    const { name, email, quiz_responses } = req.body;
+    
+    await firestore.collection("leads").add({
+      name,
+      email,
+      quiz_responses,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error saving lead:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
 async function startServer() {
