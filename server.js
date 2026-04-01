@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import * as admin from "firebase-admin";
 
-console.log("🚀 SERVER STARTING - VERSION 1.0.3");
+console.log("🚀 SERVER STARTING - VERSION 1.0.4");
 
 const serviceAccount = {
   "type": "service_account",
@@ -30,16 +30,19 @@ function getDb() {
     try {
       process.stderr.write(`[${new Date().toISOString()}] DEBUG: Initializing Firebase Admin...\n`);
       
-      const apps = admin.apps || [];
+      // Handle potential ESM default export issues
+      const firebaseAdmin = admin.default || admin;
+      
+      const apps = firebaseAdmin.apps || [];
       if (apps.length === 0) {
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
+        firebaseAdmin.initializeApp({
+          credential: firebaseAdmin.credential.cert(serviceAccount),
         });
         process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firebase Admin initialized successfully.\n`);
       } else {
         process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firebase Admin already initialized.\n`);
       }
-      db = admin.firestore();
+      db = firebaseAdmin.firestore();
       process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firestore instance obtained.\n`);
     } catch (err) {
       lastInitError = err instanceof Error ? err.message : String(err);
