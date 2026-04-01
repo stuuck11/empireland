@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import * as admin from "firebase-admin";
 
-console.log("🚀 SERVER STARTING - VERSION 1.0.4");
+console.log("🚀 SERVER STARTING - VERSION 1.0.5");
 
 const serviceAccount = {
   "type": "service_account",
@@ -35,8 +35,14 @@ function getDb() {
       
       const apps = firebaseAdmin.apps || [];
       if (apps.length === 0) {
+        // Normalize the private key to fix ASN.1 parsing errors
+        const normalizedKey = serviceAccount.private_key.replace(/\\n/g, '\n').trim();
+        
         firebaseAdmin.initializeApp({
-          credential: firebaseAdmin.credential.cert(serviceAccount),
+          credential: firebaseAdmin.credential.cert({
+            ...serviceAccount,
+            private_key: normalizedKey
+          }),
         });
         process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firebase Admin initialized successfully.\n`);
       } else {
