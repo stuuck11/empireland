@@ -1,7 +1,9 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import * as admin from "firebase-admin";
+
+// We'll import Vite dynamically only in development
+// import { createServer as createViteServer } from "vite"; 
 
 let db: admin.firestore.Firestore | null = null;
 
@@ -227,6 +229,8 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   if (process.env.NODE_ENV !== "production") {
+    // Dynamic import to avoid loading Vite in production
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
