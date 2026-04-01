@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-empireland-green: #004237;
+  --color-empireland-yellow: #787215;
+  --color-empireland-orange: #FF6E43;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f9fafb;
+}
+
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.6;
+}
