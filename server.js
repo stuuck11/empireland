@@ -2,8 +2,9 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
-console.log("🚀 SERVER STARTING - VERSION 1.0.9");
+console.log("🚀 SERVER STARTING - VERSION 1.1.0");
 
 // We'll import Vite dynamically only in development
 // import { createServer as createViteServer } from "vite"; 
@@ -248,7 +249,7 @@ app.post("/api/leads", async (req, res) => {
       name,
       email,
       quiz_responses,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: FieldValue.serverTimestamp()
     });
     
     res.json({ success: true });
