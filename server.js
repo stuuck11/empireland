@@ -4,7 +4,7 @@ import fs from "fs";
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
-console.log("🚀 SERVER STARTING - VERSION 1.1.0");
+console.log("🚀 SERVER STARTING - VERSION 1.1.1");
 
 // We'll import Vite dynamically only in development
 // import { createServer as createViteServer } from "vite"; 
@@ -211,7 +211,7 @@ app.get("/api/redirect-lead", async (req, res) => {
       transaction.set(rotationRef, { 
         currentIndex: newIndex, 
         totalClicks: newTotalClicks,
-        lastUpdate: admin.firestore.FieldValue.serverTimestamp() 
+        lastUpdate: FieldValue.serverTimestamp() 
       }, { merge: true });
       
       // Calculate target
@@ -221,7 +221,7 @@ app.get("/api/redirect-lead", async (req, res) => {
       // Increment clicks on the selected number
       const numberRef = firestore.collection("whatsapp_numbers").doc(selected.id);
       transaction.update(numberRef, { 
-        clicks: admin.firestore.FieldValue.increment(1) 
+        clicks: FieldValue.increment(1) 
       });
       
       return selected;
@@ -233,7 +233,17 @@ app.get("/api/redirect-lead", async (req, res) => {
     res.redirect(waUrl);
   } catch (error) {
     console.error("Error in redirect-lead:", error);
-    res.status(500).send(error instanceof Error ? error.message : "Erro ao processar redirecionamento.");
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : "No stack trace";
+    res.status(500).send(`
+      <h1>Erro no Redirecionamento</h1>
+      <p>Ocorreu um erro ao tentar processar o redirecionamento para o WhatsApp.</p>
+      <pre style="background: #f4f4f4; padding: 15px; border: 1px solid #ccc;">
+Erro: ${errorMsg}
+Detalhes: ${errorStack}
+      </pre>
+      <p>Por favor, verifique os logs do servidor para mais informações.</p>
+    `);
   }
 });
 
@@ -255,7 +265,11 @@ app.post("/api/leads", async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Error saving lead:", error);
-    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Internal server error",
+      stack: error instanceof Error ? error.stack : undefined,
+      hint: "Erro ao tentar salvar o lead no Firestore. Verifique se o FieldValue está definido."
+    });
   }
 });
 
