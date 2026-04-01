@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import * as admin from "firebase-admin";
 
-console.log("🚀 SERVER STARTING - VERSION 1.0.5");
+console.log("🚀 SERVER STARTING - VERSION 1.0.6");
 
 const serviceAccount = {
   "type": "service_account",
@@ -35,8 +35,13 @@ function getDb() {
       
       const apps = firebaseAdmin.apps || [];
       if (apps.length === 0) {
-        // Normalize the private key to fix ASN.1 parsing errors
-        const normalizedKey = serviceAccount.private_key.replace(/\\n/g, '\n').trim();
+        // Aggressive normalization of the private key to fix ASN.1 parsing errors
+        const normalizedKey = serviceAccount.private_key
+          .replace(/\\n/g, '\n') // Handle literal \n strings
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0)
+          .join('\n');
         
         firebaseAdmin.initializeApp({
           credential: firebaseAdmin.credential.cert({
