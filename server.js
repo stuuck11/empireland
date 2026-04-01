@@ -22,16 +22,26 @@ const serviceAccount = {
 let db = null;
 
 function getDb() {
+  console.error("DEBUG: getDb() called. Current db state:", !!db);
   if (!db) {
     try {
+      console.error("DEBUG: Initializing Firebase Admin with serviceAccount...");
       if (!admin.apps.length) {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
+        console.error("DEBUG: Firebase Admin initialized successfully.");
+      } else {
+        console.error("DEBUG: Firebase Admin already initialized.");
       }
       db = admin.firestore();
+      console.error("DEBUG: Firestore instance obtained.");
     } catch (err) {
-      console.error("❌ Erro ao inicializar Firebase Admin:", err);
+      console.error("❌ DEBUG: Erro ao inicializar Firebase Admin:", err);
+      if (err instanceof Error) {
+        console.error("DEBUG: Error message:", err.message);
+        console.error("DEBUG: Error stack:", err.stack);
+      }
       return null;
     }
   }
