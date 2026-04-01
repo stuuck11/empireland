@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import * as admin from "firebase-admin";
 
-console.log("🚀 SERVER STARTING - VERSION 0.0.1");
+console.log("🚀 SERVER STARTING - VERSION 1.0.2");
 
 const serviceAccount = {
   "type": "service_account",
@@ -22,6 +22,7 @@ const serviceAccount = {
 // import { createServer as createViteServer } from "vite"; 
 
 let db = null;
+let lastInitError = null;
 
 function getDb() {
   process.stderr.write(`[${new Date().toISOString()}] DEBUG: getDb() called. Current db state: ${!!db}\n`);
@@ -39,6 +40,7 @@ function getDb() {
       db = admin.firestore();
       process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firestore instance obtained.\n`);
     } catch (err) {
+      lastInitError = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[${new Date().toISOString()}] ❌ DEBUG: Erro ao inicializar Firebase Admin: ${err}\n`);
       if (err instanceof Error) {
         process.stderr.write(`[${new Date().toISOString()}] DEBUG: Error message: ${err.message}\n`);
@@ -135,7 +137,12 @@ app.get("/api/admin/stats", async (req, res) => {
 app.post("/api/admin/update-config", async (req, res) => {
   try {
     const firestore = getDb();
-    if (!firestore) return res.status(503).json({ error: "Firebase não configurado" });
+    if (!firestore) {
+      return res.status(503).json({ 
+        error: "Firebase não configurado", 
+        hint: lastInitError || "Erro desconhecido na inicialização do Firebase." 
+      });
+    }
     
     const { questions, whatsappNumbers, settings } = req.body;
     

@@ -383,7 +383,8 @@ const AdminPage = () => {
         alert('Configurações salvas com sucesso!');
         fetchStats();
       } else {
-        throw new Error(data.error || 'Erro ao salvar configurações');
+        const errorMessage = data.hint ? `${data.error}: ${data.hint}` : data.error || 'Erro ao salvar';
+        throw new Error(errorMessage);
       }
     } catch (err: any) {
       console.error('Erro ao salvar:', err);
@@ -464,7 +465,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v0.0.1</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.0.2</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
