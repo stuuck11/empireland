@@ -1,6 +1,10 @@
 import express from "express";
 import path from "path";
 import * as admin from "firebase-admin";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const serviceAccount = require("./firebase-service-account.json");
 
 // We'll import Vite dynamically only in development
 // import { createServer as createViteServer } from "vite"; 
@@ -9,24 +13,10 @@ let db = null;
 
 function getDb() {
   if (!db) {
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    // Handle both escaped \n and actual newlines, and remove potential quotes
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n').replace(/"/g, '');
-
-    if (!projectId || !clientEmail || !privateKey) {
-      console.warn("⚠️ ATENÇÃO: Variáveis de ambiente do Firebase ausentes. O banco de dados não funcionará até que sejam configuradas no painel da Hostinger.");
-      return null;
-    }
-
     try {
       if (!admin.apps.length) {
         admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId,
-            clientEmail,
-            privateKey,
-          }),
+          credential: admin.credential.cert(serviceAccount),
         });
       }
       db = admin.firestore();
@@ -48,7 +38,7 @@ app.get("/api/config", async (req, res) => {
     if (!firestore) {
       return res.status(503).json({ 
         error: "Firebase não configurado", 
-        hint: "Configure as variáveis FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY no painel da Hostinger." 
+        hint: "Ocorreu um erro ao inicializar o Firebase com as credenciais embutidas." 
       });
     }
     
@@ -80,7 +70,7 @@ app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
     env: process.env.NODE_ENV,
-    firebase: !!process.env.FIREBASE_PROJECT_ID 
+    firebase: !!serviceAccount.project_id 
   });
 });
 
