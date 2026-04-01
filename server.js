@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import * as admin from "firebase-admin";
 
+console.log("🚀 SERVER STARTING - VERSION 0.0.1");
+
 const serviceAccount = {
   "type": "service_account",
   "project_id": "empireland-5d335",
@@ -22,25 +24,25 @@ const serviceAccount = {
 let db = null;
 
 function getDb() {
-  console.error("DEBUG: getDb() called. Current db state:", !!db);
+  process.stderr.write(`[${new Date().toISOString()}] DEBUG: getDb() called. Current db state: ${!!db}\n`);
   if (!db) {
     try {
-      console.error("DEBUG: Initializing Firebase Admin with serviceAccount...");
+      process.stderr.write(`[${new Date().toISOString()}] DEBUG: Initializing Firebase Admin...\n`);
       if (!admin.apps.length) {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
-        console.error("DEBUG: Firebase Admin initialized successfully.");
+        process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firebase Admin initialized successfully.\n`);
       } else {
-        console.error("DEBUG: Firebase Admin already initialized.");
+        process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firebase Admin already initialized.\n`);
       }
       db = admin.firestore();
-      console.error("DEBUG: Firestore instance obtained.");
+      process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firestore instance obtained.\n`);
     } catch (err) {
-      console.error("❌ DEBUG: Erro ao inicializar Firebase Admin:", err);
+      process.stderr.write(`[${new Date().toISOString()}] ❌ DEBUG: Erro ao inicializar Firebase Admin: ${err}\n`);
       if (err instanceof Error) {
-        console.error("DEBUG: Error message:", err.message);
-        console.error("DEBUG: Error stack:", err.stack);
+        process.stderr.write(`[${new Date().toISOString()}] DEBUG: Error message: ${err.message}\n`);
+        process.stderr.write(`[${new Date().toISOString()}] DEBUG: Error stack: ${err.stack}\n`);
       }
       return null;
     }
