@@ -11,22 +11,29 @@ function getDb() {
   if (!db) {
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    // Handle both escaped \n and actual newlines, and remove potential quotes
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n').replace(/"/g, '');
 
     if (!projectId || !clientEmail || !privateKey) {
-      throw new Error("Missing Firebase environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY). Please set them in the environment.");
+      console.warn("⚠️ ATENÇÃO: Variáveis de ambiente do Firebase ausentes. O banco de dados não funcionará até que sejam configuradas no painel da Hostinger.");
+      return null;
     }
 
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          clientEmail,
-          privateKey,
-        }),
-      });
+    try {
+      if (!admin.apps.length) {
+        admin.initializeApp({
+          credential: admin.credential.cert({
+            projectId,
+            clientEmail,
+            privateKey,
+          }),
+        });
+      }
+      db = admin.firestore();
+    } catch (err) {
+      console.error("❌ Erro ao inicializar Firebase Admin:", err);
+      return null;
     }
-    db = admin.firestore();
   }
   return db;
 }
@@ -38,6 +45,12 @@ app.use(express.json());
 app.get("/api/config", async (req, res) => {
   try {
     const firestore = getDb();
+    if (!firestore) {
+      return res.status(503).json({ 
+        error: "Firebase não configurado", 
+        hint: "Configure as variáveis FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY no painel da Hostinger." 
+      });
+    }
     
     // Fetch general settings
     const settingsSnap = await firestore.collection("config").doc("settings").get();
@@ -83,6 +96,8 @@ app.post("/api/admin/login", (req, res) => {
 app.get("/api/admin/stats", async (req, res) => {
   try {
     const firestore = getDb();
+    if (!firestore) return res.status(503).json({ error: "Firebase não configurado" });
+    
     const rotationSnap = await firestore.collection("config").doc("rotation").get();
     const totalClicks = rotationSnap.exists ? rotationSnap.data()?.totalClicks || 0 : 0;
     
@@ -108,6 +123,8 @@ app.get("/api/admin/stats", async (req, res) => {
 app.post("/api/admin/update-config", async (req, res) => {
   try {
     const firestore = getDb();
+    if (!firestore) return res.status(503).json({ error: "Firebase não configurado" });
+    
     const { questions, whatsappNumbers, settings } = req.body;
     
     // Update questions
@@ -152,6 +169,8 @@ app.post("/api/admin/update-config", async (req, res) => {
 app.get("/api/redirect-lead", async (req, res) => {
   try {
     const firestore = getDb();
+    if (!firestore) return res.status(503).send("Serviço temporariamente indisponível (Firebase não configurado).");
+    
     // Get active numbers
     const numbersSnap = await firestore.collection("whatsapp_numbers").where("active", "==", true).get();
     const activeNumbers = numbersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
@@ -209,6 +228,8 @@ app.get("/api/redirect-lead", async (req, res) => {
 app.post("/api/leads", async (req, res) => {
   try {
     const firestore = getDb();
+    if (!firestore) return res.status(503).json({ error: "Firebase não configurado" });
+    
     const { name, email, quiz_responses } = req.body;
     
     await firestore.collection("leads").add({
