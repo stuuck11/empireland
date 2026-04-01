@@ -53,8 +53,20 @@ app.get("/api/config", async (req, res) => {
     res.json({ ...settings, questions, whatsappNumbers });
   } catch (error) {
     console.error("Error fetching config:", error);
-    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Internal server error",
+      hint: "Verifique se as variáveis de ambiente do Firebase estão configuradas no painel da Hostinger."
+    });
   }
+});
+
+// Health check route
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    env: process.env.NODE_ENV,
+    firebase: !!process.env.FIREBASE_PROJECT_ID 
+  });
 });
 
 app.post("/api/admin/login", (req, res) => {
@@ -212,7 +224,7 @@ app.post("/api/leads", async (req, res) => {
 });
 
 async function startServer() {
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
