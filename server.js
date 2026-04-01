@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import * as admin from "firebase-admin";
 
-console.log("🚀 SERVER STARTING - VERSION 1.0.8");
+console.log("🚀 SERVER STARTING - VERSION 1.0.9");
 
 // We'll import Vite dynamically only in development
 // import { createServer as createViteServer } from "vite"; 
@@ -12,52 +12,33 @@ let db = null;
 let lastInitError = null;
 
 function getDb() {
-  process.stderr.write(`[${new Date().toISOString()}] DEBUG: getDb() called. Current db state: ${!!db}\n`);
   if (!db) {
     try {
-      process.stderr.write(`[${new Date().toISOString()}] DEBUG: Initializing Firebase Admin...\n`);
+      const base64Config = process.env.FIREBASE_CONFIG_BASE64;
       
-      // Handle potential ESM default export issues
-      const firebaseAdmin = admin.default || admin;
-      
-      const apps = firebaseAdmin.apps || [];
-      if (apps.length === 0) {
-        const keyPath = path.resolve(process.cwd(), 'firebase-key.json');
+      if (!base64Config) {
+        const errorMsg = "❌ ERRO: Variável FIREBASE_CONFIG_BASE64 não encontrada.";
+        console.error(errorMsg);
+        lastInitError = errorMsg;
+        return null;
+      }
 
-        try {
-          if (fs.existsSync(keyPath)) {
-            const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
-            firebaseAdmin.initializeApp({
-              credential: firebaseAdmin.credential.cert(serviceAccount)
-            });
-            console.log("🔥 Firebase inicializado com sucesso via arquivo JSON físico.");
-            process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firebase Admin initialized successfully via physical JSON file.\n`);
-          } else {
-            const errorMsg = `❌ ERRO FATAL: Arquivo firebase-key.json não encontrado no caminho: ${keyPath}`;
-            console.error(errorMsg);
-            process.stderr.write(`[${new Date().toISOString()}] ${errorMsg}\n`);
-            lastInitError = errorMsg;
-            return null;
-          }
-        } catch (err) {
-          const errorMsg = `❌ ERRO FATAL ao ler o JSON do Firebase: ${err}`;
-          console.error(errorMsg);
-          process.stderr.write(`[${new Date().toISOString()}] ${errorMsg}\n`);
-          lastInitError = errorMsg;
-          return null;
-        }
-      } else {
-        process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firebase Admin already initialized.\n`);
+      // Decodifica a string Base64 de volta para o JSON original
+      const serviceAccount = JSON.parse(Buffer.from(base64Config, 'base64').toString('utf8'));
+
+      const firebaseAdmin = admin.default || admin;
+      const apps = firebaseAdmin.apps || [];
+      
+      if (apps.length === 0) {
+        firebaseAdmin.initializeApp({
+          credential: firebaseAdmin.credential.cert(serviceAccount)
+        });
       }
       db = firebaseAdmin.firestore();
-      process.stderr.write(`[${new Date().toISOString()}] DEBUG: Firestore instance obtained.\n`);
+      console.log("🔥 Firebase inicializado com sucesso via Base64!");
     } catch (err) {
       lastInitError = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[${new Date().toISOString()}] ❌ DEBUG: Erro ao inicializar Firebase Admin: ${err}\n`);
-      if (err instanceof Error) {
-        process.stderr.write(`[${new Date().toISOString()}] DEBUG: Error message: ${err.message}\n`);
-        process.stderr.write(`[${new Date().toISOString()}] DEBUG: Error stack: ${err.stack}\n`);
-      }
+      console.error("❌ Erro ao inicializar Firebase:", err);
       return null;
     }
   }
