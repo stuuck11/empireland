@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import * as admin from "firebase-admin";
 
-console.log("🚀 SERVER STARTING - VERSION 1.0.2");
+console.log("🚀 SERVER STARTING - VERSION 1.0.3");
 
 const serviceAccount = {
   "type": "service_account",
@@ -29,7 +29,9 @@ function getDb() {
   if (!db) {
     try {
       process.stderr.write(`[${new Date().toISOString()}] DEBUG: Initializing Firebase Admin...\n`);
-      if (!admin.apps.length) {
+      
+      const apps = admin.apps || [];
+      if (apps.length === 0) {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
