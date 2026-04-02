@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, ChevronRight, LogOut, Plus, Trash2, Save, BarChart2, Settings, MessageSquare, Edit2, RotateCcw, Loader2 } from 'lucide-react';
@@ -464,6 +464,8 @@ const AdminPage = () => {
   const [error, setError] = useState('');
   const [editingNumber, setEditingNumber] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const lastSavedStatsRef = useRef<string>("");
 
   const fetchStats = (silent = false) => {
     if (!silent) setIsLoading(true);
@@ -478,16 +480,59 @@ const AdminPage = () => {
       })
       .then(data => {
         setStats(data);
+        lastSavedStatsRef.current = JSON.stringify(data);
         if (!silent) setIsLoading(false);
         else setIsRefreshing(false);
       })
       .catch(err => {
         console.error('Erro ao buscar stats, usando mock:', err);
         setStats(MOCK_STATS);
+        lastSavedStatsRef.current = JSON.stringify(MOCK_STATS);
         if (!silent) setIsLoading(false);
         else setIsRefreshing(false);
       });
   };
+
+  const handleSave = async (dataToSave = stats) => {
+    if (!dataToSave) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/admin/update-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questions: dataToSave.questions || [],
+          whatsappNumbers: dataToSave.whatsappNumbers || [],
+          settings: dataToSave.settings || {}
+        })
+      });
+      if (res.ok) {
+        lastSavedStatsRef.current = JSON.stringify(dataToSave);
+      } else {
+        const data = await res.json();
+        const errorMessage = data.hint ? `${data.error}: ${data.hint}` : data.error || 'Erro ao salvar';
+        throw new Error(errorMessage);
+      }
+    } catch (err: any) {
+      console.error('Erro ao salvar:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (stats && isLoggedIn) {
+      const statsStr = JSON.stringify(stats);
+      if (lastSavedStatsRef.current !== "" && lastSavedStatsRef.current !== statsStr) {
+        const timeout = setTimeout(() => {
+          handleSave(stats);
+        }, 1000);
+        return () => clearTimeout(timeout);
+      } else if (lastSavedStatsRef.current === "") {
+        lastSavedStatsRef.current = statsStr;
+      }
+    }
+  }, [stats, isLoggedIn]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -514,32 +559,6 @@ const AdminPage = () => {
       fetchStats();
     } else {
       setError(data.message);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!stats) return;
-    try {
-      const res = await fetch('/api/admin/update-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questions: stats.questions || [],
-          whatsappNumbers: stats.whatsappNumbers || [],
-          settings: stats.settings || {}
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert('Configurações salvas com sucesso!');
-        fetchStats();
-      } else {
-        const errorMessage = data.hint ? `${data.error}: ${data.hint}` : data.error || 'Erro ao salvar';
-        throw new Error(errorMessage);
-      }
-    } catch (err: any) {
-      console.error('Erro ao salvar:', err);
-      alert(err.message);
     }
   };
 
@@ -616,7 +635,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.2.5</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.2.6</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
@@ -661,13 +680,18 @@ const AdminPage = () => {
               <div className="w-2 h-2 bg-green-500 rounded-full" />
               ATUALIZANDO EM TEMPO REAL
             </div>
+            {isSaving ? (
+              <div className="flex items-center gap-2 text-empireland-green text-xs font-bold">
+                <Loader2 size={14} className="animate-spin" />
+                SALVANDO...
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-gray-400 text-xs font-bold">
+                <Check size={14} />
+                ALTERAÇÕES SALVAS AUTOMATICAMENTE
+              </div>
+            )}
           </div>
-          <button 
-            onClick={handleSave}
-            className="flex items-center gap-2 bg-empireland-green text-white px-6 py-2 rounded-lg font-bold hover:shadow-lg transition-all"
-          >
-            <Save size={20} /> SALVAR ALTERAÇÕES
-          </button>
         </div>
 
         {activeTab === 'stats' && (
