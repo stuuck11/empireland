@@ -89,6 +89,7 @@ const QuizPage = () => {
   const [bankFound, setBankFound] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [clickedOption, setClickedOption] = useState<string | null>(null);
 
   const fetchConfig = () => {
     setIsLoading(true);
@@ -137,9 +138,11 @@ const QuizPage = () => {
   const isLastStep = currentStep === totalQuestions;
 
   const handleOptionClick = (questionId: number, option: string) => {
+    setClickedOption(option);
     setAnswers(prev => ({ ...prev, [questionId]: option }));
     setTimeout(() => {
       setCurrentStep(prev => prev + 1);
+      setClickedOption(null);
     }, 300);
   };
 
@@ -262,12 +265,15 @@ const QuizPage = () => {
                     <motion.button
                       key={`${currentStep}-${idx}`}
                       whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98, backgroundColor: "#3b82f6", color: "#ffffff", borderColor: "#3b82f6" }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => handleOptionClick(questions[currentStep]?.id, option)}
                       className={cn(
-                        "w-full py-4 px-6 text-center border-2 border-gray-100 rounded-xl transition-all duration-300 shadow-sm",
-                        "bg-white text-gray-700 hover:bg-empireland-green hover:text-white hover:border-empireland-green font-bold"
+                        "w-full py-4 px-6 text-center border-2 rounded-xl transition-all duration-300 shadow-sm font-bold",
+                        clickedOption === option 
+                          ? "text-white" 
+                          : "bg-white text-gray-700 border-gray-100 hover:bg-empireland-green hover:text-white hover:border-empireland-green"
                       )}
+                      style={clickedOption === option ? { backgroundColor: '#132650', borderColor: '#132650' } : {}}
                     >
                       {option}
                     </motion.button>
@@ -550,7 +556,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.1.6</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.1.8</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
