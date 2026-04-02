@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, ChevronRight, LogOut, Plus, Trash2, Save, BarChart2, Settings, MessageSquare, Edit2, RotateCcw } from 'lucide-react';
+import { Check, ChevronRight, LogOut, Plus, Trash2, Save, BarChart2, Settings, MessageSquare, Edit2, RotateCcw, Loader2 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -87,6 +87,7 @@ const QuizPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSearchingBanks, setIsSearchingBanks] = useState(false);
   const [bankFound, setBankFound] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const fetchConfig = () => {
@@ -172,7 +173,7 @@ const QuizPage = () => {
     setIsSearchingBanks(true);
     
     // 6 second delay "procurando bancos parceiros"
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 6000));
     
     // Meta Pixel Conversion Tracking
     if (typeof (window as any).fbq === 'function') {
@@ -181,9 +182,10 @@ const QuizPage = () => {
     
     setIsSearchingBanks(false);
     setBankFound(true);
+    setIsRedirecting(true);
 
-    // 2 second delay "banco parceiro encontrado"
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // 4 second delay for the redirect popup with progress bar
+    await new Promise(resolve => setTimeout(resolve, 4000));
 
     setIsSubmitting(true);
     try {
@@ -340,21 +342,60 @@ const QuizPage = () => {
                 <button
                   onClick={handleSubmit}
                   disabled={isSubmitting || isSearchingBanks || bankFound}
+                  style={{ backgroundColor: isSearchingBanks || isSubmitting || bankFound ? '#d1d5db' : '#008542' }}
                   className={cn(
-                    "w-full py-4 px-8 rounded-full font-bold text-lg transition-all duration-300 shadow-lg",
-                    "bg-empireland-green text-white hover:bg-opacity-90 transform hover:-translate-y-1"
+                    "w-full py-4 px-8 rounded-full font-bold text-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2",
+                    !(isSearchingBanks || isSubmitting || bankFound) && "text-white hover:bg-opacity-90 transform hover:-translate-y-1",
+                    (isSearchingBanks || isSubmitting || bankFound) && "text-gray-500 cursor-not-allowed"
                   )}
                 >
-                  {isSearchingBanks 
-                    ? "PROCURANDO BANCOS PARCEIROS..." 
-                    : bankFound 
-                      ? "BANCO PARCEIRO ENCONTRADO!" 
-                      : isSubmitting 
-                        ? "PROCESSANDO..." 
-                        : "VER MEU EMPRÉSTIMO"}
+                  {isSearchingBanks ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      Procurando bancos parceiros...
+                    </>
+                  ) : isSubmitting || bankFound
+                    ? "Processando..." 
+                    : "Ver meu empréstimo"}
                 </button>
               </div>
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Redirect Popup */}
+        <AnimatePresence>
+          {isRedirecting && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden p-8 text-center space-y-6"
+              >
+                <div className="flex justify-center">
+                  <div className="h-20 w-20 bg-green-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-green-200">
+                    <Check size={48} strokeWidth={3} />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-bold text-gray-800">Banco Encontrado!</h3>
+                  <p className="text-gray-500 font-medium">
+                    Redirecionando para o atendimento por WhatsApp
+                  </p>
+                </div>
+
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: "100%" }}
+                    transition={{ duration: 4, ease: "linear" }}
+                    className="h-full bg-green-500"
+                  />
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
       </main>
@@ -509,7 +550,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.1.4</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.1.6</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
