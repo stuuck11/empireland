@@ -95,6 +95,7 @@ const QuizPage = () => {
   const [clickedOption, setClickedOption] = useState<string | null>(null);
   const [loadingStage, setLoadingStage] = useState(1);
   const [dots, setDots] = useState("");
+  const [isFinalRedirecting, setIsFinalRedirecting] = useState(false);
 
   useEffect(() => {
     if (isSearchingBanks) {
@@ -221,6 +222,9 @@ const QuizPage = () => {
   };
 
   const handleFinalRedirect = async () => {
+    if (isFinalRedirecting) return;
+    setIsFinalRedirecting(true);
+    
     // Meta Pixel Conversion Tracking
     if (typeof (window as any).fbq === 'function') {
       (window as any).fbq('track', 'Lead');
@@ -418,15 +422,26 @@ const QuizPage = () => {
 
                 <button
                   onClick={handleFinalRedirect}
-                  className="w-full py-4 bg-green-500 text-white rounded-full font-bold text-lg hover:bg-green-600 transition-all shadow-lg shadow-green-100 flex items-center justify-center gap-2"
+                  disabled={isFinalRedirecting}
+                  className="w-full py-4 bg-green-500 text-white rounded-full font-bold text-lg hover:bg-green-600 transition-all shadow-lg shadow-green-100 flex items-center justify-center gap-2 relative overflow-hidden"
                 >
-                  <img 
-                    src="https://imgur.com/sidnp2O.png" 
-                    alt="WhatsApp" 
-                    className="h-6 w-6 object-contain"
-                    referrerPolicy="no-referrer"
-                  />
-                  Falar com especialista
+                  {isFinalRedirecting && (
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: '100%' }}
+                      transition={{ duration: 1, ease: "linear" }}
+                      className="absolute inset-0 bg-green-600 z-0"
+                    />
+                  )}
+                  <div className="relative z-10 flex items-center justify-center gap-2">
+                    <img 
+                      src="https://imgur.com/sidnp2O.png" 
+                      alt="WhatsApp" 
+                      className="h-6 w-6 object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                    {isFinalRedirecting ? "Redirecionando..." : "Falar com especialista"}
+                  </div>
                 </button>
               </motion.div>
             </div>
@@ -584,7 +599,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.2.3</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.2.4</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
