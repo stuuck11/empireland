@@ -463,9 +463,12 @@ const AdminPage = () => {
   const [activeTab, setActiveTab] = useState<'stats' | 'questions' | 'whatsapp' | 'general'>('stats');
   const [error, setError] = useState('');
   const [editingNumber, setEditingNumber] = useState<any>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchStats = () => {
-    setIsLoading(true);
+  const fetchStats = (silent = false) => {
+    if (!silent) setIsLoading(true);
+    else setIsRefreshing(true);
+    
     setError('');
     fetch('/api/admin/stats')
       .then(async res => {
@@ -475,14 +478,28 @@ const AdminPage = () => {
       })
       .then(data => {
         setStats(data);
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
+        else setIsRefreshing(false);
       })
       .catch(err => {
         console.error('Erro ao buscar stats, usando mock:', err);
         setStats(MOCK_STATS);
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
+        else setIsRefreshing(false);
       });
   };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isLoggedIn) {
+      interval = setInterval(() => {
+        fetchStats(true);
+      }, 5000); // Poll every 5 seconds
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isLoggedIn]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -599,7 +616,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.2.4</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.2.5</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
@@ -638,7 +655,13 @@ const AdminPage = () => {
       {/* Main Content */}
       <main className="flex-grow p-8 overflow-y-auto">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 capitalize">{activeTab}</h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-2xl font-bold text-gray-800 capitalize">{activeTab}</h2>
+            <div className="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-bold animate-pulse border border-green-100">
+              <div className="w-2 h-2 bg-green-500 rounded-full" />
+              ATUALIZANDO EM TEMPO REAL
+            </div>
+          </div>
           <button 
             onClick={handleSave}
             className="flex items-center gap-2 bg-empireland-green text-white px-6 py-2 rounded-lg font-bold hover:shadow-lg transition-all"
