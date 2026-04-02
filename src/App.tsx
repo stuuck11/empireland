@@ -70,6 +70,9 @@ const Footer = () => (
         <p>
           A EMPIRELAND oferece conteúdo gratuito sobre cartões de crédito, bancos digitais, empréstimos e serviços financeiros de terceiros. Não somos uma instituição financeira, não realizamos a concessão de crédito diretamente e não cobramos qualquer valor pelo acesso aos nossos serviços. As recomendações geradas pela nossa tecnologia são apenas informativas e não constituem aconselhamento financeiro ou jurídico; consulte sempre profissionais qualificados. Os termos finais do empréstimo dependem exclusivamente da instituição emissora. O prazo mínimo de pagamento é de 12 meses e o máximo de 60 meses. A EMPIRELAND não compactua com práticas de empréstimos abusivos e não oferece modalidades com prazos de pagamento de 60 dias ou menos. Exemplo representativo: Um empréstimo de R$ 10.000,00 com pagamento em 24 meses terá parcelas de aproximadamente R$ 550,00, com uma taxa de juros de 2,5% ao mês (34,49% ao ano). O custo total a pagar ao final do período será de R$ 13.200,00.
         </p>
+        <p className="pt-4 border-t border-white/10 mt-4 font-medium">
+          EmpireLand © - Todos os direitos reservados. Não temos vínculo com instituições financeiras, somos uma plataforma de intermediação e análise.
+        </p>
       </div>
     </div>
   </footer>
@@ -90,6 +93,19 @@ const QuizPage = () => {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [clickedOption, setClickedOption] = useState<string | null>(null);
+  const [loadingStage, setLoadingStage] = useState(1);
+  const [dots, setDots] = useState("");
+
+  useEffect(() => {
+    if (isSearchingBanks) {
+      const interval = setInterval(() => {
+        setDots(prev => (prev.length >= 3 ? "" : prev + "."));
+      }, 500);
+      return () => clearInterval(interval);
+    } else {
+      setDots("");
+    }
+  }, [isSearchingBanks]);
 
   const fetchConfig = () => {
     setIsLoading(true);
@@ -174,21 +190,19 @@ const QuizPage = () => {
     }
 
     setIsSearchingBanks(true);
+    setLoadingStage(1);
     
-    // 6 second delay "procurando bancos parceiros"
-    await new Promise(resolve => setTimeout(resolve, 6000));
+    // First stage: 3.5 seconds
+    await new Promise(resolve => setTimeout(resolve, 4500));
     
-    // Meta Pixel Conversion Tracking
-    if (typeof (window as any).fbq === 'function') {
-      (window as any).fbq('track', 'Lead');
-    }
+    setLoadingStage(2);
+    
+    // Second stage: 3.5 seconds
+    await new Promise(resolve => setTimeout(resolve, 4500));
     
     setIsSearchingBanks(false);
     setBankFound(true);
     setIsRedirecting(true);
-
-    // 4 second delay for the redirect popup with progress bar
-    await new Promise(resolve => setTimeout(resolve, 4000));
 
     setIsSubmitting(true);
     try {
@@ -204,7 +218,13 @@ const QuizPage = () => {
     } catch (err) {
       console.error('Erro ao salvar lead:', err);
     }
-    // Redirect to the lead distribution endpoint
+  };
+
+  const handleFinalRedirect = () => {
+    // Meta Pixel Conversion Tracking
+    if (typeof (window as any).fbq === 'function') {
+      (window as any).fbq('track', 'Lead');
+    }
     window.location.href = '/api/redirect-lead';
   };
 
@@ -358,7 +378,7 @@ const QuizPage = () => {
                   {isSearchingBanks ? (
                     <>
                       <Loader2 className="animate-spin" size={20} />
-                      Procurando bancos parceiros...
+                      {loadingStage === 1 ? `Procurando bancos parceiros${dots}` : `Analisando propostas disponíveis${dots}`}
                     </>
                   ) : isSubmitting || bankFound
                     ? "Processando..." 
@@ -386,20 +406,24 @@ const QuizPage = () => {
                 </div>
                 
                 <div className="space-y-2">
-                  <h3 className="text-2xl font-bold text-gray-800">Banco Encontrado!</h3>
+                  <h3 className="text-2xl font-bold text-gray-800">Parceiro localizado!</h3>
                   <p className="text-gray-500 font-medium">
-                    Redirecionando para o atendimento por WhatsApp
+                    Clique no botão abaixo para falar com um de nossos especialistas.
                   </p>
                 </div>
 
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 4, ease: "linear" }}
-                    className="h-full bg-green-500"
+                <button
+                  onClick={handleFinalRedirect}
+                  className="w-full py-4 bg-green-500 text-white rounded-full font-bold text-lg hover:bg-green-600 transition-all shadow-lg shadow-green-100 flex items-center justify-center gap-2"
+                >
+                  <img 
+                    src="https://imgur.com/sidnp2O.png" 
+                    alt="WhatsApp" 
+                    className="h-6 w-6 object-contain"
+                    referrerPolicy="no-referrer"
                   />
-                </div>
+                  Falar com especialista
+                </button>
               </motion.div>
             </div>
           )}
@@ -556,7 +580,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.1.8</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.2.2</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
