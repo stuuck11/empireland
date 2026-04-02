@@ -220,11 +220,15 @@ const QuizPage = () => {
     }
   };
 
-  const handleFinalRedirect = () => {
+  const handleFinalRedirect = async () => {
     // Meta Pixel Conversion Tracking
     if (typeof (window as any).fbq === 'function') {
       (window as any).fbq('track', 'Lead');
     }
+    
+    // 1 second delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     window.location.href = '/api/redirect-lead';
   };
 
@@ -580,7 +584,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.2.2</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.2.3</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
