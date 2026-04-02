@@ -85,6 +85,9 @@ const QuizPage = () => {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [formData, setFormData] = useState({ name: '', email: '', agreed: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSearchingBanks, setIsSearchingBanks] = useState(false);
+  const [bankFound, setBankFound] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const fetchConfig = () => {
     setIsLoading(true);
@@ -150,7 +153,38 @@ const QuizPage = () => {
   const canSubmit = formData.name.trim() !== '' && formData.email.trim() !== '' && formData.agreed;
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (isSubmitting || isSearchingBanks || bankFound) return;
+    setValidationError(null);
+
+    if (formData.name.trim() === '') {
+      setValidationError('Por favor, preencha seu nome.');
+      return;
+    }
+    if (formData.email.trim() === '') {
+      setValidationError('Por favor, preencha seu e-mail.');
+      return;
+    }
+    if (!formData.agreed) {
+      setValidationError('Por favor, aceite os termos de uso.');
+      return;
+    }
+
+    setIsSearchingBanks(true);
+    
+    // 6 second delay "procurando bancos parceiros"
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Meta Pixel Conversion Tracking
+    if (typeof (window as any).fbq === 'function') {
+      (window as any).fbq('track', 'Lead');
+    }
+    
+    setIsSearchingBanks(false);
+    setBankFound(true);
+
+    // 2 second delay "banco parceiro encontrado"
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     setIsSubmitting(true);
     try {
       await fetch('/api/leads', {
@@ -224,9 +258,9 @@ const QuizPage = () => {
                 <div className="grid grid-cols-2 gap-4">
                   {(questions[currentStep]?.options || []).map((option: string, idx: number) => (
                     <motion.button
-                      key={idx}
+                      key={`${currentStep}-${idx}`}
                       whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
+                      whileTap={{ scale: 0.98, backgroundColor: "#3b82f6", color: "#ffffff", borderColor: "#3b82f6" }}
                       onClick={() => handleOptionClick(questions[currentStep]?.id, option)}
                       className={cn(
                         "w-full py-4 px-6 text-center border-2 border-gray-100 rounded-xl transition-all duration-300 shadow-sm",
@@ -297,17 +331,27 @@ const QuizPage = () => {
                   </label>
                 </div>
 
+                {validationError && (
+                  <p className="text-red-500 text-sm font-bold animate-pulse">
+                    {validationError}
+                  </p>
+                )}
+
                 <button
                   onClick={handleSubmit}
-                  disabled={!canSubmit || isSubmitting}
+                  disabled={isSubmitting || isSearchingBanks || bankFound}
                   className={cn(
                     "w-full py-4 px-8 rounded-full font-bold text-lg transition-all duration-300 shadow-lg",
-                    canSubmit && !isSubmitting 
-                      ? "bg-empireland-green text-white hover:bg-opacity-90 transform hover:-translate-y-1" 
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    "bg-empireland-green text-white hover:bg-opacity-90 transform hover:-translate-y-1"
                   )}
                 >
-                  {isSubmitting ? "PROCESSANDO..." : "VER MEU EMPRÉSTIMO"}
+                  {isSearchingBanks 
+                    ? "PROCURANDO BANCOS PARCEIROS..." 
+                    : bankFound 
+                      ? "BANCO PARCEIRO ENCONTRADO!" 
+                      : isSubmitting 
+                        ? "PROCESSANDO..." 
+                        : "VER MEU EMPRÉSTIMO"}
                 </button>
               </div>
             </motion.div>
@@ -465,7 +509,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.1.1</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.1.4</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
