@@ -83,6 +83,26 @@ app.get("/api/config", async (req, res) => {
   }
 });
 
+// Activity tracking for online users
+app.post("/api/activity", async (req, res) => {
+  try {
+    const firestore = getDb();
+    if (!firestore) return res.status(503).json({ error: "Firebase não configurado" });
+    
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ error: "Session ID is required" });
+
+    await firestore.collection("activity").doc(sessionId).set({
+      lastSeen: FieldValue.serverTimestamp()
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error tracking activity:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Health check route
 app.get("/api/health", (req, res) => {
   res.json({ 
@@ -106,9 +126,85 @@ app.get("/api/admin/stats", async (req, res) => {
     const firestore = getDb();
     if (!firestore) return res.status(503).json({ error: "Firebase não configurado" });
     
+    const { period = 'today' } = req.query;
+
     const rotationSnap = await firestore.collection("config").doc("rotation").get();
     const totalClicks = rotationSnap.exists ? rotationSnap.data()?.totalClicks || 0 : 0;
     
+    // Helper for date ranges (UTC-7 offset considered)
+    const getRange = (daysAgo = 0) => {
+      const now = new Date();
+      // Adjust to UTC-7
+      const localNow = new Date(now.getTime() - (7 * 60 * 60 * 1000));
+      
+      const start = new Date(localNow);
+      start.setUTCHours(0, 0, 0, 0);
+      start.setUTCDate(start.getUTCDate() - daysAgo);
+      
+      const end = new Date(start);
+      end.setUTCHours(23, 59, 59, 999);
+      
+      // Convert back to UTC for Firestore query
+      return {
+        start: new Date(start.getTime() + (7 * 60 * 60 * 1000)),
+        end: new Date(end.getTime() + (7 * 60 * 60 * 1000))
+      };
+    };
+
+    const todayRange = getRange(0);
+    const yesterdayRange = getRange(1);
+    const dayBeforeYesterdayRange = getRange(2);
+    const sevenDaysRange = {
+      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      end: new Date()
+    };
+
+    // Fetch clicks for today and yesterday for the summary
+    const clicksTodaySnap = await firestore.collection("clicks")
+      .where("timestamp", ">=", todayRange.start)
+      .where("timestamp", "<=", todayRange.end)
+      .count().get();
+    const clicksToday = clicksTodaySnap.data().count;
+
+    const clicksYesterdaySnap = await firestore.collection("clicks")
+      .where("timestamp", ">=", yesterdayRange.start)
+      .where("timestamp", "<=", yesterdayRange.end)
+      .count().get();
+    const clicksYesterday = clicksYesterdaySnap.data().count;
+
+    // Fetch clicks for the selected period
+    let periodCount = 0;
+    if (period === 'today') periodCount = clicksToday;
+    else if (period === 'yesterday') periodCount = clicksYesterday;
+    else if (period === 'yesterday_before') {
+      const snap = await firestore.collection("clicks")
+        .where("timestamp", ">=", dayBeforeYesterdayRange.start)
+        .where("timestamp", "<=", dayBeforeYesterdayRange.end)
+        .count().get();
+      periodCount = snap.data().count;
+    } else if (period === '7days') {
+      const snap = await firestore.collection("clicks")
+        .where("timestamp", ">=", sevenDaysRange.start)
+        .count().get();
+      periodCount = snap.data().count;
+    } else {
+      periodCount = totalClicks;
+    }
+
+    // Online users tracking
+    const getOnlineCount = async (minutes) => {
+      const threshold = new Date(Date.now() - minutes * 60 * 1000);
+      const snap = await firestore.collection("activity")
+        .where("lastSeen", ">=", threshold)
+        .count().get();
+      return snap.data().count;
+    };
+
+    const onlineRealtime = await getOnlineCount(1); // 1 min for "real-time"
+    const online5m = await getOnlineCount(5);
+    const online10m = await getOnlineCount(10);
+    const online30m = await getOnlineCount(30);
+
     const questionsSnap = await firestore.collection("config").doc("questions").get();
     const questions = questionsSnap.exists ? questionsSnap.data()?.items || [] : [];
     
@@ -121,7 +217,21 @@ app.get("/api/admin/stats", async (req, res) => {
     const numbersSnap = await firestore.collection("whatsapp_numbers").get();
     const whatsappNumbers = numbersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    res.json({ totalClicks, whatsappNumbers, questions, settings });
+    res.json({ 
+      totalClicks, 
+      clicksToday, 
+      clicksYesterday, 
+      periodCount,
+      online: {
+        realtime: onlineRealtime,
+        m5: online5m,
+        m10: online10m,
+        m30: online30m
+      },
+      whatsappNumbers, 
+      questions, 
+      settings 
+    });
   } catch (error) {
     console.error("Error fetching admin stats:", error);
     res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
@@ -222,6 +332,13 @@ app.get("/api/redirect-lead", async (req, res) => {
       const numberRef = firestore.collection("whatsapp_numbers").doc(selected.id);
       transaction.update(numberRef, { 
         clicks: FieldValue.increment(1) 
+      });
+
+      // Log individual click with timestamp
+      const clickRef = firestore.collection("clicks").doc();
+      transaction.set(clickRef, {
+        numberId: selected.id,
+        timestamp: FieldValue.serverTimestamp()
       });
       
       return selected;

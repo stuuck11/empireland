@@ -98,6 +98,26 @@ const QuizPage = () => {
   const [isFinalRedirecting, setIsFinalRedirecting] = useState(false);
 
   useEffect(() => {
+    let sessionId = sessionStorage.getItem('empireland_session_id');
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).substring(2, 15);
+      sessionStorage.setItem('empireland_session_id', sessionId);
+    }
+
+    const sendHeartbeat = () => {
+      fetch('/api/activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      }).catch(() => {});
+    };
+
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     if (isSearchingBanks) {
       const interval = setInterval(() => {
         setDots(prev => (prev.length >= 3 ? "" : prev + "."));
@@ -465,6 +485,8 @@ const AdminPage = () => {
   const [editingNumber, setEditingNumber] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [period, setPeriod] = useState<'today' | 'yesterday' | 'yesterday_before' | '7days' | 'all'>('today');
+  const [onlinePeriod, setOnlinePeriod] = useState<'realtime' | 'm5' | 'm10' | 'm30'>('realtime');
   const lastSavedStatsRef = useRef<string>("");
 
   const fetchStats = (silent = false) => {
@@ -472,7 +494,7 @@ const AdminPage = () => {
     else setIsRefreshing(true);
     
     setError('');
-    fetch('/api/admin/stats')
+    fetch(`/api/admin/stats?period=${period}`)
       .then(async res => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Falha ao carregar estatísticas');
@@ -533,6 +555,10 @@ const AdminPage = () => {
       }
     }
   }, [stats, isLoggedIn]);
+
+  useEffect(() => {
+    fetchStats(true);
+  }, [period]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -635,7 +661,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.2.6</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.2.8</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
@@ -698,20 +724,91 @@ const AdminPage = () => {
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <p className="text-gray-500 text-sm">Total de Cliques Global</p>
-                <p className="text-3xl font-bold text-empireland-green">{stats.totalClicks}</p>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-gray-500 text-sm">Cliques Hoje</p>
+                    <p className="text-3xl font-bold text-empireland-green">{stats.clicksToday || 0}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Ontem: <span className="font-bold">{stats.clicksYesterday || 0}</span>
+                    </p>
+                  </div>
+                  <div className="p-2 bg-green-50 text-green-600 rounded-lg">
+                    <BarChart2 size={20} />
+                  </div>
+                </div>
               </div>
+
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <p className="text-gray-500 text-sm">Números Ativos</p>
-                <p className="text-3xl font-bold text-empireland-green">
-                  {(stats.whatsappNumbers || []).filter((n:any) => n.active).length}
-                </p>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-gray-500 text-sm">Cliques por Período</p>
+                      <select 
+                        value={period}
+                        onChange={(e) => setPeriod(e.target.value as any)}
+                        className="text-[10px] font-bold bg-gray-50 border-none rounded p-1 outline-none text-empireland-green"
+                      >
+                        <option value="today">Hoje</option>
+                        <option value="yesterday">Ontem</option>
+                        <option value="yesterday_before">Ontem de Ontem</option>
+                        <option value="7days">Últimos 7 dias</option>
+                        <option value="all">Todo o tempo</option>
+                      </select>
+                    </div>
+                    <p className="text-3xl font-bold text-empireland-green">{stats.periodCount || 0}</p>
+                  </div>
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                    <BarChart2 size={20} />
+                  </div>
+                </div>
               </div>
+
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <p className="text-gray-500 text-sm">Total de Perguntas</p>
-                <p className="text-3xl font-bold text-empireland-green">
-                  {(stats?.questions || []).length}
-                </p>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-gray-500 text-sm">Total de Cliques Global</p>
+                    <p className="text-3xl font-bold text-empireland-green">{stats.totalClicks}</p>
+                  </div>
+                  <div className="p-2 bg-orange-50 text-orange-600 rounded-lg">
+                    <BarChart2 size={20} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Online Users Section */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    Pessoas Online Agora
+                  </h3>
+                  <select 
+                    value={onlinePeriod}
+                    onChange={(e) => setOnlinePeriod(e.target.value as any)}
+                    className="text-[10px] font-bold bg-gray-50 border border-gray-100 rounded px-2 py-1 outline-none text-empireland-green"
+                  >
+                    <option value="realtime">Tempo Real</option>
+                    <option value="m5">Últimos 5 min</option>
+                    <option value="m10">Últimos 10 min</option>
+                    <option value="m30">Últimos 30 min</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="p-6 bg-gray-50 rounded-xl border border-gray-100 flex flex-col items-center justify-center text-center">
+                  <p className="text-gray-400 text-xs font-bold uppercase mb-1">
+                    {onlinePeriod === 'realtime' ? 'Tempo Real' : 
+                     onlinePeriod === 'm5' ? 'Últimos 5 min' : 
+                     onlinePeriod === 'm10' ? 'Últimos 10 min' : 'Últimos 30 min'}
+                  </p>
+                  <p className="text-5xl font-bold text-empireland-green">
+                    {onlinePeriod === 'realtime' ? (stats.online?.realtime || 0) : 
+                     onlinePeriod === 'm5' ? (stats.online?.m5 || 0) : 
+                     onlinePeriod === 'm10' ? (stats.online?.m10 || 0) : (stats.online?.m30 || 0)}
+                  </p>
+                </div>
               </div>
             </div>
 
