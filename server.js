@@ -96,6 +96,22 @@ app.post("/api/activity", async (req, res) => {
       lastSeen: FieldValue.serverTimestamp()
     });
 
+    // Occasional cleanup (1 in 20 requests) to keep the collection clean
+    if (Math.random() < 0.05) {
+      const threshold = new Date(Date.now() - 30 * 60 * 1000);
+      const oldDocs = await firestore.collection("activity")
+        .where("lastSeen", "<", threshold)
+        .limit(100)
+        .get();
+      
+      if (!oldDocs.empty) {
+        const batch = firestore.batch();
+        oldDocs.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`🧹 Cleaned up ${oldDocs.size} old activity records`);
+      }
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error("Error tracking activity:", error);
