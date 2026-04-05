@@ -649,7 +649,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.3.1</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.3.2</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
@@ -729,7 +729,7 @@ const AdminPage = () => {
                       </select>
                     </div>
                     <p className="text-3xl font-bold text-empireland-green">{stats.periodCount || 0}</p>
-                    <p className="text-[10px] text-gray-400 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       {stats.clicksYesterday || 0} ontem
                     </p>
                   </div>
