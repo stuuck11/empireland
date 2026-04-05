@@ -131,62 +131,39 @@ app.get("/api/admin/stats", async (req, res) => {
     const rotationSnap = await firestore.collection("config").doc("rotation").get();
     const totalClicks = rotationSnap.exists ? rotationSnap.data()?.totalClicks || 0 : 0;
     
-    // Helper for date ranges (UTC-7 offset considered)
-    const getRange = (daysAgo = 0) => {
+    // Helper for date strings (UTC-7 offset considered)
+    const getDateStr = (daysAgo = 0) => {
       const now = new Date();
-      // Adjust to UTC-7
       const localNow = new Date(now.getTime() - (7 * 60 * 60 * 1000));
-      
-      const start = new Date(localNow);
-      start.setUTCHours(0, 0, 0, 0);
-      start.setUTCDate(start.getUTCDate() - daysAgo);
-      
-      const end = new Date(start);
-      end.setUTCHours(23, 59, 59, 999);
-      
-      // Convert back to UTC for Firestore query
-      return {
-        start: new Date(start.getTime() + (7 * 60 * 60 * 1000)),
-        end: new Date(end.getTime() + (7 * 60 * 60 * 1000))
-      };
+      localNow.setUTCDate(localNow.getUTCDate() - daysAgo);
+      return localNow.toISOString().split('T')[0];
     };
 
-    const todayRange = getRange(0);
-    const yesterdayRange = getRange(1);
-    const dayBeforeYesterdayRange = getRange(2);
-    const sevenDaysRange = {
-      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      end: new Date()
+    const todayStr = getDateStr(0);
+    const yesterdayStr = getDateStr(1);
+    const dayBeforeYesterdayStr = getDateStr(2);
+
+    // Fetch daily stats from collection
+    const getDailyCount = async (dateStr) => {
+      const doc = await firestore.collection("daily_stats").doc(dateStr).get();
+      return doc.exists ? doc.data().count || 0 : 0;
     };
 
-    // Fetch clicks for today and yesterday for the summary
-    const clicksTodaySnap = await firestore.collection("clicks")
-      .where("timestamp", ">=", todayRange.start)
-      .where("timestamp", "<=", todayRange.end)
-      .count().get();
-    const clicksToday = clicksTodaySnap.data().count;
-
-    const clicksYesterdaySnap = await firestore.collection("clicks")
-      .where("timestamp", ">=", yesterdayRange.start)
-      .where("timestamp", "<=", yesterdayRange.end)
-      .count().get();
-    const clicksYesterday = clicksYesterdaySnap.data().count;
+    const clicksToday = await getDailyCount(todayStr);
+    const clicksYesterday = await getDailyCount(yesterdayStr);
 
     // Fetch clicks for the selected period
     let periodCount = 0;
     if (period === 'today') periodCount = clicksToday;
     else if (period === 'yesterday') periodCount = clicksYesterday;
-    else if (period === 'yesterday_before') {
-      const snap = await firestore.collection("clicks")
-        .where("timestamp", ">=", dayBeforeYesterdayRange.start)
-        .where("timestamp", "<=", dayBeforeYesterdayRange.end)
-        .count().get();
-      periodCount = snap.data().count;
-    } else if (period === '7days') {
-      const snap = await firestore.collection("clicks")
-        .where("timestamp", ">=", sevenDaysRange.start)
-        .count().get();
-      periodCount = snap.data().count;
+    else if (period === 'yesterday_before') periodCount = await getDailyCount(dayBeforeYesterdayStr);
+    else if (period === '7days') {
+      // Sum last 7 days from daily_stats
+      let sum = 0;
+      for (let i = 0; i < 7; i++) {
+        sum += await getDailyCount(getDateStr(i));
+      }
+      periodCount = sum;
     } else {
       periodCount = totalClicks;
     }
@@ -334,12 +311,13 @@ app.get("/api/redirect-lead", async (req, res) => {
         clicks: FieldValue.increment(1) 
       });
 
-      // Log individual click with timestamp
-      const clickRef = firestore.collection("clicks").doc();
-      transaction.set(clickRef, {
-        numberId: selected.id,
-        timestamp: FieldValue.serverTimestamp()
-      });
+      // Log daily stats
+      const dateStr = new Date(new Date().getTime() - (7 * 60 * 60 * 1000)).toISOString().split('T')[0];
+      const dailyRef = firestore.collection("daily_stats").doc(dateStr);
+      transaction.set(dailyRef, { 
+        count: FieldValue.increment(1),
+        date: dateStr
+      }, { merge: true });
       
       return selected;
     });
@@ -361,32 +339,6 @@ Detalhes: ${errorStack}
       </pre>
       <p>Por favor, verifique os logs do servidor para mais informações.</p>
     `);
-  }
-});
-
-// New endpoint to save lead data before redirect
-app.post("/api/leads", async (req, res) => {
-  try {
-    const firestore = getDb();
-    if (!firestore) return res.status(503).json({ error: "Firebase não configurado" });
-    
-    const { name, email, quiz_responses } = req.body;
-    
-    await firestore.collection("leads").add({
-      name,
-      email,
-      quiz_responses,
-      createdAt: FieldValue.serverTimestamp()
-    });
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error saving lead:", error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : "Internal server error",
-      stack: error instanceof Error ? error.stack : undefined,
-      hint: "Erro ao tentar salvar o lead no Firestore. Verifique se o FieldValue está definido."
-    });
   }
 });
 

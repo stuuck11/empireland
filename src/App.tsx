@@ -226,19 +226,7 @@ const QuizPage = () => {
     setIsRedirecting(true);
 
     setIsSubmitting(true);
-    try {
-      await fetch('/api/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          quiz_responses: answers
-        })
-      });
-    } catch (err) {
-      console.error('Erro ao salvar lead:', err);
-    }
+    // Lead saving removed as per request
   };
 
   const handleFinalRedirect = async () => {
@@ -661,7 +649,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.2.8</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.3.0</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
@@ -722,22 +710,7 @@ const AdminPage = () => {
 
         {activeTab === 'stats' && (
           <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-gray-500 text-sm">Cliques Hoje</p>
-                    <p className="text-3xl font-bold text-empireland-green">{stats.clicksToday || 0}</p>
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      Ontem: <span className="font-bold">{stats.clicksYesterday || 0}</span>
-                    </p>
-                  </div>
-                  <div className="p-2 bg-green-50 text-green-600 rounded-lg">
-                    <BarChart2 size={20} />
-                  </div>
-                </div>
-              </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <div className="flex justify-between items-start">
                   <div>
