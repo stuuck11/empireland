@@ -147,10 +147,10 @@ app.get("/api/admin/stats", async (req, res) => {
     const rotationSnap = await firestore.collection("config").doc("rotation").get();
     const totalClicks = rotationSnap.exists ? rotationSnap.data()?.totalClicks || 0 : 0;
     
-    // Helper for date strings (UTC-7 offset considered)
+    // Helper for date strings (UTC-3 offset considered for Brazil)
     const getDateStr = (daysAgo = 0) => {
       const now = new Date();
-      const localNow = new Date(now.getTime() - (7 * 60 * 60 * 1000));
+      const localNow = new Date(now.getTime() - (3 * 60 * 60 * 1000));
       localNow.setUTCDate(localNow.getUTCDate() - daysAgo);
       return localNow.toISOString().split('T')[0];
     };
@@ -327,8 +327,8 @@ app.get("/api/redirect-lead", async (req, res) => {
         clicks: FieldValue.increment(1) 
       });
 
-      // Log daily stats
-      const dateStr = new Date(new Date().getTime() - (7 * 60 * 60 * 1000)).toISOString().split('T')[0];
+      // Log daily stats (UTC-3 offset for Brazil)
+      const dateStr = new Date(new Date().getTime() - (3 * 60 * 60 * 1000)).toISOString().split('T')[0];
       const dailyRef = firestore.collection("daily_stats").doc(dateStr);
       transaction.set(dailyRef, { 
         count: FieldValue.increment(1),
