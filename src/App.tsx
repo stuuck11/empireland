@@ -475,7 +475,6 @@ const AdminPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [period, setPeriod] = useState<'today' | 'yesterday' | 'yesterday_before' | '7days' | 'all'>('today');
   const [onlinePeriod, setOnlinePeriod] = useState<'realtime' | 'm5' | 'm10' | 'm30'>('realtime');
-  const lastSavedStatsRef = useRef<string>("");
 
   const fetchStats = (silent = false) => {
     if (!silent) setIsLoading(true);
@@ -490,14 +489,12 @@ const AdminPage = () => {
       })
       .then(data => {
         setStats(data);
-        lastSavedStatsRef.current = JSON.stringify(data);
         if (!silent) setIsLoading(false);
         else setIsRefreshing(false);
       })
       .catch(err => {
         console.error('Erro ao buscar stats, usando mock:', err);
         setStats(MOCK_STATS);
-        lastSavedStatsRef.current = JSON.stringify(MOCK_STATS);
         if (!silent) setIsLoading(false);
         else setIsRefreshing(false);
       });
@@ -516,33 +513,18 @@ const AdminPage = () => {
           settings: dataToSave.settings || {}
         })
       });
-      if (res.ok) {
-        lastSavedStatsRef.current = JSON.stringify(dataToSave);
-      } else {
+      if (!res.ok) {
         const data = await res.json();
         const errorMessage = data.hint ? `${data.error}: ${data.hint}` : data.error || 'Erro ao salvar';
         throw new Error(errorMessage);
       }
     } catch (err: any) {
       console.error('Erro ao salvar:', err);
+      alert('Erro ao salvar: ' + err.message);
     } finally {
       setIsSaving(false);
     }
   };
-
-  useEffect(() => {
-    if (stats && isLoggedIn) {
-      const statsStr = JSON.stringify(stats);
-      if (lastSavedStatsRef.current !== "" && lastSavedStatsRef.current !== statsStr) {
-        const timeout = setTimeout(() => {
-          handleSave(stats);
-        }, 1000);
-        return () => clearTimeout(timeout);
-      } else if (lastSavedStatsRef.current === "") {
-        lastSavedStatsRef.current = statsStr;
-      }
-    }
-  }, [stats, isLoggedIn]);
 
   useEffect(() => {
     fetchStats(true);
@@ -550,15 +532,15 @@ const AdminPage = () => {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isLoggedIn) {
+    if (isLoggedIn && activeTab === 'stats') {
       interval = setInterval(() => {
         fetchStats(true);
-      }, 5000); // Poll every 5 seconds
+      }, 5000); // Poll every 5 seconds only on stats tab
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, activeTab]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -649,7 +631,7 @@ const AdminPage = () => {
       <aside className="w-64 bg-empireland-green text-white flex flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="text-xl font-bold">EmpireLand Admin</div>
-          <div className="text-xs opacity-50 font-mono mt-1">v1.3.4</div>
+          <div className="text-xs opacity-50 font-mono mt-1">v1.3.6</div>
         </div>
         <nav className="flex-grow p-4 space-y-2">
           <button 
@@ -694,15 +676,10 @@ const AdminPage = () => {
               <div className="w-2 h-2 bg-green-500 rounded-full" />
               ATUALIZANDO EM TEMPO REAL
             </div>
-            {isSaving ? (
+            {isSaving && (
               <div className="flex items-center gap-2 text-empireland-green text-xs font-bold">
                 <Loader2 size={14} className="animate-spin" />
                 SALVANDO...
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-gray-400 text-xs font-bold">
-                <Check size={14} />
-                ALTERAÇÕES SALVAS AUTOMATICAMENTE
               </div>
             )}
           </div>
@@ -917,6 +894,17 @@ const AdminPage = () => {
                     </button>
                   </div>
                 </div>
+
+                <div className="pt-4 border-t border-gray-50 flex justify-end">
+                  <button 
+                    onClick={() => handleSave(stats)}
+                    disabled={isSaving}
+                    className="bg-empireland-green text-white px-6 py-2 rounded-lg font-bold hover:bg-opacity-90 transition-all text-sm flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    SALVAR PERGUNTA
+                  </button>
+                </div>
               </div>
             ))}
             <button 
@@ -971,8 +959,12 @@ const AdminPage = () => {
                       </button>
                       <button 
                         onClick={() => {
-                          const newNs = (stats.whatsappNumbers || []).filter((_:any, i:number) => i !== idx);
-                          setStats({ ...stats, whatsappNumbers: newNs });
+                          if (confirm('Deseja excluir este operador?')) {
+                            const newNs = (stats.whatsappNumbers || []).filter((_:any, i:number) => i !== idx);
+                            const newStats = { ...stats, whatsappNumbers: newNs };
+                            setStats(newStats);
+                            handleSave(newStats);
+                          }
                         }}
                         className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                         title="Excluir"
@@ -993,7 +985,9 @@ const AdminPage = () => {
                       onClick={() => {
                         const newNs = [...(stats.whatsappNumbers || [])];
                         newNs[idx].active = !newNs[idx].active;
-                        setStats({ ...stats, whatsappNumbers: newNs });
+                        const newStats = { ...stats, whatsappNumbers: newNs };
+                        setStats(newStats);
+                        handleSave(newStats);
                       }}
                       className="text-xs font-bold text-empireland-green hover:underline"
                     >
@@ -1026,6 +1020,17 @@ const AdminPage = () => {
                   rows={4}
                   className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-empireland-green outline-none text-gray-600"
                 />
+              </div>
+
+              <div className="pt-4 border-t border-gray-50 flex justify-end">
+                <button 
+                  onClick={() => handleSave(stats)}
+                  disabled={isSaving}
+                  className="bg-empireland-green text-white px-8 py-3 rounded-xl font-bold hover:bg-opacity-90 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                  SALVAR CONFIGURAÇÕES
+                </button>
               </div>
             </div>
           </div>
